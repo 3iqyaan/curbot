@@ -1,31 +1,30 @@
 use std::time::{Duration, Instant};
 
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast};
 
 use crate::{
-    types::{AskCpu, SayCpu},
-    CONFIG,
-    errors::Error,
-    notify
+    CONFIG, FAST_CPU_CHECK, SLOW_CPU_CHECK, errors::Error, notify, resource::ask, types::{AskCpu, SayCpu}
 };
 
-pub async fn ensure_cpu(req_tx: mpsc::Sender<AskCpu>, mut resp_rx: mpsc::Receiver<Vec<SayCpu>>, shutdown: broadcast::Sender<bool>) -> Result<(), Error>{
+pub async fn check_cpu(shutdown: broadcast::Sender<bool>) -> Result<(), Error>{
 
     let mut shutdown_rx = shutdown.subscribe();
     drop(shutdown);
 
     let config = CONFIG.get().unwrap();
-    let (max_cpu_load, max_cpu_overload_duration, cpu_check_time_period) = 
-    (config.max_cpu_load, config.max_cpu_overload_dur, config.cpu_check_time_period);
+    let (max_cpu_load, max_cpu_overload_duration) = 
+    (config.max_cpu_load, config.max_cpu_overload_dur);
 
+    let mut cpu_check_time_period = SLOW_CPU_CHECK;
     let mut start_overload: Option<Instant> = None;
     let mut alerted = false;
     let mut overload_ongoing_for: Option<Duration> = None;
 
     loop{
-        req_tx.send(AskCpu::Usage).await?;
-        let ans =  resp_rx.recv().await;
-        if ans.is_none(){
+        tokio::time::sleep(cpu_check_time_period).await;
+
+        let ans = ask::cpu::main(AskCpu::Usage);
+        if ans.is_err(){
             eprint!("ERROR: Couldn't collect CPU data!");
             return Err(Error::CpuAns);
         }
@@ -35,8 +34,10 @@ pub async fn ensure_cpu(req_tx: mpsc::Sender<AskCpu>, mut resp_rx: mpsc::Receive
         let mut n = 0;
         let mut full_cpu = 0.0;
         for ans in ans{
-            full_cpu += ans.usage;
-            n += 1;
+            if let SayCpu::Usage(usage) = ans{
+                full_cpu += usage;
+                n += 1;
+            }
         }
         let usage = full_cpu / n as f32; // avg
         // println!("Cpu usage: {:?}%", usage);
@@ -44,6 +45,7 @@ pub async fn ensure_cpu(req_tx: mpsc::Sender<AskCpu>, mut resp_rx: mpsc::Receive
             if start_overload.is_none(){
                 // detected overload
                 start_overload = Some(Instant::now());
+                cpu_check_time_period = FAST_CPU_CHECK;
                 println!("CPU Overload Detected");
             }
             else if (start_overload.unwrap().elapsed() > max_cpu_overload_duration) && !alerted{
@@ -59,16 +61,17 @@ pub async fn ensure_cpu(req_tx: mpsc::Sender<AskCpu>, mut resp_rx: mpsc::Receive
             }
         }
         else{
+            // Usage is normal
+            cpu_check_time_period = SLOW_CPU_CHECK;
             start_overload = None;
             alerted = false;
             overload_ongoing_for = None
         }
 
-        if let Ok(_) = shutdown_rx.try_recv(){
+        if shutdown_rx.try_recv().is_ok(){
             break;
         }
-        tokio::time::sleep(cpu_check_time_period).await;
     }
-    drop(req_tx);
+    drop(shutdown_rx);
     Ok(())
 }

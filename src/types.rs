@@ -9,13 +9,12 @@ pub enum AskCpu{
     Shutdown
 }
 
-#[derive(Default)]
-pub struct SayCpu{
-    pub name: String,
-    pub brand: String,
-    pub freq: u64,
-    pub usage: f32,
-    pub proc: Option<(u64, f32)>
+pub enum SayCpu{
+    Name(String),
+    Brand(String),
+    Freq(u64),
+    Usage(f32),
+    Proc(Option<(u64, f32)>)
 }
 
 pub enum AskMem{
@@ -25,15 +24,16 @@ pub enum AskMem{
     TSwap,
     FSwap,
     Proc(u32),
+    URam,
     All
 }
 
-#[derive(Default)]
-pub struct SayMem{
-    pub tram: u64,
-    pub aram: u64,
-    pub fram: u64,
-    pub tswap: u64,
-    pub fswap: u64,
-    pub proc: Option<(u64, u64)>
+pub enum SayMem{
+    TRam(u64),
+    ARam(u64),
+    FRam(u64),
+    TSwap(u64),
+    FSwap(u64),
+    Proc(Option<(u64, u64)>),
+    URam(f32)
 }

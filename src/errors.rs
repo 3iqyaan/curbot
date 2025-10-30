@@ -4,7 +4,7 @@ use tokio::task::JoinError;
 #[derive(Error, Debug)]
 pub enum Error{
     #[error("Tokio SendError: {0}")]
-    SendError(String),
+    Send(String),
 
     #[error("CPU helper couldn't be contacted")]
     CpuAns,
@@ -13,11 +13,11 @@ pub enum Error{
     RamAns,
 
     #[error("This thread panicked, Couldn't Join")]
-    Joinerror(#[from] JoinError)
+    Join(#[from] JoinError)
 }
 
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for Error{
     fn from(err: tokio::sync::mpsc::error::SendError<T>) -> Self{
-        Error::SendError(err.to_string())
+        Error::Send(err.to_string())
     }
 }
